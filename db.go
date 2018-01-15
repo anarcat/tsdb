@@ -119,6 +119,7 @@ type DB struct {
 
 type dbMetrics struct {
 	loadedBlocks         prometheus.GaugeFunc
+	diskUsage            prometheus.GaugeFunc
 	reloads              prometheus.Counter
 	reloadsFailed        prometheus.Counter
 	compactionsTriggered prometheus.Counter
@@ -135,6 +136,17 @@ func newDBMetrics(db *DB, r prometheus.Registerer) *dbMetrics {
 		db.mtx.RLock()
 		defer db.mtx.RUnlock()
 		return float64(len(db.blocks))
+	})
+	m.diskUsage = prometheus.NewGaugeFunc(prometheus.GaugeOpts{
+		Name: "prometheus_tsdb_disk_usage",
+		Help: "disk space used on the filesystem",
+	}, func() int64 {
+		var sum int64
+		filepath.Walk(searchDir, func(path string, f os.FileInfo, err error) error {
+			sum += f.Size()
+			return nil
+		})
+		return sum
 	})
 	m.reloads = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "prometheus_tsdb_reloads_total",
@@ -156,6 +168,7 @@ func newDBMetrics(db *DB, r prometheus.Registerer) *dbMetrics {
 	if r != nil {
 		r.MustRegister(
 			m.loadedBlocks,
+			m.diskUsage,
 			m.reloads,
 			m.reloadsFailed,
 			m.compactionsTriggered,
